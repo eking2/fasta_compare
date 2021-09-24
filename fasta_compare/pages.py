@@ -1,6 +1,7 @@
 from Bio import SeqIO
 import streamlit as st
-from fasta_compare.utils import uploaded_fasta_to_state, seqrecords_to_seqs, SESSION_STATE
+from fasta_compare.utils import parse_uploaded_fasta, seqrecords_to_seqs, SESSION_STATE
+from fasta_compare.run import plot_freqs_box
 
 def upload():
 
@@ -20,40 +21,37 @@ def upload():
         if len(fasta) != 2:
             st.error('Please upload 2 FASTA files')
         else:
-
-            # state = [List[SeqRecord], name]
-            state1 = uploaded_fasta_to_state(fasta[0])
-            state2 = uploaded_fasta_to_state(fasta[1])
-
-            SESSION_STATE['fasta1'] = state1
-            SESSION_STATE['fasta2'] = state2
+            SESSION_STATE['fastas'] = [parse_uploaded_fasta(upload) for upload in fasta]
             st.success('Uploaded')
     
     # display current files
-    if SESSION_STATE.get('fasta1') is not None:
-        state1_name = SESSION_STATE['fasta1']['name']
-        state2_name = SESSION_STATE['fasta1']['name']
+    if SESSION_STATE.get('fastas') is not None:
+        inputs = SESSION_STATE['fastas']
+        names = [inp['name'] for inp in inputs]
+        lens = [len(inp['records']) for inp in inputs]
 
-        state1_len = len(SESSION_STATE['fasta1']['records'])
-        state2_len = len(SESSION_STATE['fasta2']['records'])
-
-        st.write(f"Current inputs: {state1_name} ({(state1_len)} sequences) "
-                    f"and {state2_name} ({state2_len} sequences)")
+        st.write(f"Current inputs: {names[0]} ({lens[0]} sequences) "
+                    f"and {names[1]} ({lens[1]} sequences)")
 
 def results():
 
     st.header('Results')
 
     # no fasta inputs
-    if SESSION_STATE.get('fasta1') is None:
+    if SESSION_STATE.get('fastas') is None:
         st.warning('Input 2 FASTA files on the Upload tab')
+    else:
+        inputs = SESSION_STATE.get('fastas')
 
-    # read sequences
-    seqs1 = seqrecords_to_seqs(SESSION_STATE['fasta1']['records'])
-    seqs2 = seqrecords_to_seqs(SESSION_STATE['fasta2']['records'])
+        st.write(f"{inputs[0]['name']} ({len(inputs[0]['records'])} sequences)")
+        st.write(f"{inputs[1]['name']} ({len(inputs[1]['records'])} sequences)")
+        st.markdown("""---""")
 
-    # plot amino acid distributions
+        # plot amino acid distributions
+        st.write('Amino acid frequencies')
+        with st.spinner('Loading plot...'):
+            plot_freqs_box(inputs)
 
-    # plot sequence entropy
+        # plot sequence entropy
 
-    # plot pair-wise sequence identities
+        # plot pair-wise sequence identities
