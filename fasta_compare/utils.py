@@ -9,6 +9,7 @@ import re
 # global
 SESSION_STATE = st.session_state
 SESSION_STATE['fastas'] = None
+SESSION_STATE['template'] = None
 
 AA_LIST = 'ACDEFGHIKLMNPQRSTVWY'
 
@@ -25,3 +26,11 @@ def seqrecords_to_seqs(seqrecords: List[SeqRecord]) -> List[str]:
     # return [re.sub(f'[^{AA_LIST}]', '', str(record.seq)) for record in seqrecords]
 
     return [str(record.seq) for record in seqrecords]
+
+def check_seq_valid(sequence: str) -> None:
+
+    pat = re.compile(f'[^{AA_LIST}]')
+    results = pat.search(sequence)
+
+    assert results is None, 'invalid sequence'
+

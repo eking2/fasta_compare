@@ -14,24 +14,35 @@ def upload():
                                   key='fa1',
                                   help='Upload 2 FASTA files')
 
+        template = st.text_area(label = 'Template sequence',
+                                help='Enter template amino acid sequence')
+
         submit = st.form_submit_button(label='Submit')
     
     # only allow 2 fasta
     if submit:
         if len(fasta) != 2:
             st.error('Please upload 2 FASTA files')
+
+        if len(template) == 0:
+            st.error('Please enter template amino acid sequence')
+
         else:
             SESSION_STATE['fastas'] = [parse_uploaded_fasta(upload) for upload in fasta]
+            SESSION_STATE['template'] = template
             st.success('Uploaded')
     
     # display current files
     if SESSION_STATE.get('fastas') is not None:
+        template = SESSION_STATE['template']
         inputs = SESSION_STATE['fastas']
         names = [inp['name'] for inp in inputs]
         lens = [len(inp['records']) for inp in inputs]
 
         st.write(f"Current inputs: {names[0]} ({lens[0]} sequences) "
                     f"and {names[1]} ({lens[1]} sequences)")
+        st.write()
+        st.write(f'Template ({len(template)} bp): {template}')
 
 def results():
 
@@ -42,9 +53,11 @@ def results():
         st.warning('Input 2 FASTA files on the Upload tab')
     else:
         inputs = SESSION_STATE.get('fastas')
+        template = SESSION_STATE.get('template')
 
         st.write(f"{inputs[0]['name']} ({len(inputs[0]['records'])} sequences)")
         st.write(f"{inputs[1]['name']} ({len(inputs[1]['records'])} sequences)")
+        st.write(f"Template ({len(template)}): {template}")
         st.markdown("""---""")
 
         # plot amino acid distributions
