@@ -87,7 +87,6 @@ def get_all_freqs(records: List[SeqRecord], source: str) -> pd.DataFrame:
     
     return freqs_df
 
-
 def plot_freqs_box(inputs: List[Dict]) -> None:
     
     """
@@ -107,7 +106,7 @@ def plot_freqs_box(inputs: List[Dict]) -> None:
     combined = pd.concat(freqs, axis=0)
     
     # plot box
-    fig = plt.figure(figsize=(12, 5.5))
+    fig = plt.figure(figsize=(12, 5.5), dpi=150)
     
     p = sns.boxplot(data=combined, x='aa', y='freq', hue='set', fliersize=0)
     
@@ -195,7 +194,7 @@ def run_mafft_drop_gaps(fasta: str, template: str) -> TemporaryFile:
 
     return msa_temp
 
-def msa_to_df(msa):
+def msa_to_df(msa: str) -> pd.DataFrame:
 
     """
     Convert aligned MSA sequences to dataframe, one column for each position. 
@@ -221,3 +220,132 @@ def msa_to_df(msa):
 
     return df
 
+
+def calc_entropy_position(msa_df: pd.DataFrame, pos: int, eps: float=1e-12) -> float:
+
+    """Calculate Shannon entropy at selected position.
+    
+    Parameters
+    ----------
+    msa_df : pd.DataFrame
+        DataFrame with rows for each sample, column for each position
+        with values being the amino acid
+    pos : int
+        Position (1-index) to get entropy
+    eps : float (default: 1e-12)
+        Avoid nan after log
+
+    Returns
+    -------
+    entropy : float
+        Shannon entropy in bits 
+    """
+
+    # get msa column
+    msa_col = msa_df[pos].tolist()
+
+    # counts for each aa
+    counts = {aa: msa_col.count(aa) for aa in AA_LIST}
+
+    # total canonical and normalize to freqs
+    total = sum(counts.values())
+    freqs = {aa: (count/total) + eps for aa, count in counts.items()}
+
+    # shannon entropy in bits
+    entropy = -np.sum([freq * np.log2(freq) for freq in freqs.values()])
+
+    return entropy
+
+
+def get_seq_entropy(msa_df):
+
+    """
+    Calculate Shannon entropy at all positions. Ignore gaps.
+    
+    Parameters
+    ----------
+    msa_df : pd.DataFrame
+        DataFrame with rows for each sample, column for each position
+        with values being the amino acid
+    
+    Returns
+    -------
+    entropy : List[float] 
+        Shannon entropy at each position, in bits
+    """
+
+    positions = msa_df.columns
+    entropy = [calc_entropy_position(msa_df, pos) for pos in positions]
+
+    return entropy
+
+def fasta_to_entropy(records, template):
+
+    """
+    Run pipeline from raw FASTA to entropy values at template positions.
+
+    Parameters
+    ----------
+    records : List[SeqRecord]
+        SeqRecords from input FASTA file 
+    template : str
+        Amino acid sequence for template
+
+    Returns
+    -------
+    entropy : List[float]
+        Shannon entropy at each position, in bits
+    """
+
+    # convert records to FASTA
+    fasta_temp = NamedTemporaryFile()
+    SeqIO.write(records, fasta_temp.name, 'fasta')
+
+    # pipeline
+    msa_temp = run_mafft_drop_gaps(fasta_temp.name, template)
+    msa_df = msa_to_df(msa_temp.name)
+    entropy = get_seq_entropy(msa_df)
+
+    # close temp files
+    fasta_temp.close()
+    msa_temp.close()
+
+    return entropy
+
+def plot_entropy(inputs: List[Dict], template: str, window: int) -> None:
+
+    """
+    Plot smoothed sequence entropy.
+    
+    Parameters
+    ----------
+    inputs : List[Dict]
+        List of dicts with keys 'records' holding SeqRecords, 
+        'name' with FASTA name, and 'template' with template seq
+    template : str
+        Amino acid sequence for template
+    window : int
+        Sliding window size for rolling mean
+    """
+
+    # read sequences
+    records = [inp['records'] for inp in inputs]
+    sources = [inp['name'].split('.')[0] for inp in inputs]
+
+    ents = [fasta_to_entropy(rec, template) for rec in records]
+
+    fig = plt.figure(figsize=(7, 4), dpi=150)
+
+    # smooth input with rolling window
+    ent_1 = pd.Series(ents[0]).rolling(window=window).mean().values
+    ent_2 = pd.Series(ents[1]).rolling(window=window).mean().values
+
+    plt.plot(ent_1, label=sources[0])
+    plt.plot(ent_2, label=sources[1])
+
+    plt.grid(alpha=0.2)
+    plt.xlabel('Position')
+    plt.ylabel('Shannon Entropy (bits)')
+    plt.legend()
+
+    st.pyplot(fig)
