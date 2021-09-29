@@ -5,6 +5,9 @@ import streamlit as st
 from streamlit.uploaded_file_manager import UploadedFile
 from typing import Dict, Union, List
 import re
+from tempfile import NamedTemporaryFile
+import subprocess
+from subprocess import CompletedProcess
 
 # global
 SESSION_STATE = st.session_state
@@ -34,3 +37,19 @@ def check_seq_valid(sequence: str) -> None:
 
     assert results is None, 'invalid sequence'
 
+
+def records_to_fasta(records) -> NamedTemporaryFile:
+
+    fasta_temp = NamedTemporaryFile()
+    SeqIO.write(records, fasta_temp.name, 'fasta')
+
+    return fasta_temp
+
+
+def run_cmd(cmd: str) -> CompletedProcess:
+
+    res = subprocess.run(cmd.split(' '), capture_output=True)
+    print(res.stdout.decode('utf-8'))
+    print(res.stderr.decode('utf-8'))
+
+    return res

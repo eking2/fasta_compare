@@ -2,7 +2,7 @@ from Bio import SeqIO
 import streamlit as st
 import textwrap
 from fasta_compare.utils import parse_uploaded_fasta, seqrecords_to_seqs, SESSION_STATE
-from fasta_compare.run import plot_freqs_box, plot_entropy
+from fasta_compare.run import plot_freqs_box, plot_entropy, plot_pid
 
 def upload():
 
@@ -66,10 +66,13 @@ def results():
         with st.spinner('Loading plot...'):
             plot_freqs_box(inputs)
 
-        # plot sequence entropy
+        # # plot sequence entropy
         st.write('Sequence conservation')
         window = st.slider('Window size', min_value=0, max_value=20, value=12, step=1)
         with st.spinner('Loading plot...'):
             plot_entropy(inputs, template, window)
 
         # plot pair-wise sequence identities
+        st.write('Pairwise sequence identities')
+        with st.spinner('Loading plot...'):
+            plot_pid(inputs)
