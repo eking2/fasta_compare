@@ -3,6 +3,7 @@ from Bio.SeqRecord import SeqRecord
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 from pathlib import Path
 from typing import Dict, Optional
 from prody.dynamics import nma
@@ -22,7 +23,9 @@ from prody import parseMSA, refineMSA, writeMSA
 from io import StringIO
 from tempfile import NamedTemporaryFile, TemporaryFile
 from joblib import Parallel, delayed
-
+from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
 
 def get_freqs(seq: str) -> Dict:
 
@@ -438,3 +441,139 @@ def plot_pid(inputs: List[dict]) -> None:
     plt.legend()
 
     st.pyplot(fig)
+
+
+def run_mmseqs2(fasta: str, seq_id: float=0.8) -> None:
+
+    """
+    Run mmseqs2 to cluster and select representative sequences.
+    
+    Parameters
+    ----------
+    fasta : str
+        Path to FASTA file
+    seq_id : float (default: 0.8)
+        Minimal sequence identity threshold
+    """
+
+    handle = Path(fasta).stem
+
+    cmd = 'mmseqs easy-cluster {fasta} {handle} tmp --min-seq-id {seq_id}'
+    run_cmd(cmd)
+
+
+def get_cluster_sizes(tsv: str) -> pd.DataFrame:
+    
+    """
+    Read mmseqs2 cluster.tsv file and count number of samples per cluster.
+    
+    Parameters
+    ----------
+    tsv : str
+        Path to mmseqs2 tsv file with cluster assignments
+    """
+    
+    handle = Path(tsv).stem.split('_')[0]
+    
+    # [representative, sample]
+    df = pd.read_csv(tsv, delim_whitespace=True, header=None, names=['cluster_rep', 'sample'])
+
+    # to [representative, count]
+    counts = df['cluster_rep'].value_counts().to_frame().reset_index()
+    counts.columns = ['cluster_rep', 'count']
+    counts['set'] = handle
+    
+    return counts
+
+
+def combine_reps(fasta_a, fasta_b):
+
+    """
+    Combine the representative sequences from each FASTA file.
+    
+    Parameters
+    ----------
+    fasta_a : str
+        Path to FASTA
+    fasta_b : str
+        Path to FASTA
+    """
+
+    handle = '_'.join([Path(fasta).stem for fasta in [fasta_a, fasta_b]])
+    combined = Path(fasta_a).read_text() + Path(fasta_b).read_text()
+    
+    Path(f'{handle}.fasta').write_text(combined)
+
+
+def run_clustalo(fasta):
+
+    """
+    Run ClustalO and get distance matrix of cluster representatives.
+    
+    Parameters
+    ----------
+    fasta : str
+        Path to FASTA with combined sequences from both sources
+    """
+
+    handle = Path(fasta).stem
+
+    cmd = 'clustalo -i {fasta} --distmat-out={handle}.mat --full'
+    run_cmd(cmd)
+
+
+def plot_mat(mat, counts, scale=5, **kwargs):
+
+    """
+    Plot sequence space from TSNE of clustalo distance matrix.
+    
+    Parameters
+    ----------
+    mat : str
+        ClustalO distance matrix
+    counts : pd.DataFrame
+        Dataframe with number of samples in cluster per representative
+    scale : int (default: 5)
+        Factor to scale size of points
+    **kwargs 
+        TSNE kwargs
+    """
+    
+    # read
+    pid = pd.read_csv(mat, skiprows=1, header=None, delim_whitespace=True)
+    pid.set_index(0, inplace=True)
+    
+    # tsne
+    vals = pid.values
+    pipe = make_pipeline(StandardScaler(), TSNE(n_components=2, **kwargs))
+    pid_tsne = pipe.fit_transform(vals)
+    
+    # merge back with labels
+    df = pd.DataFrame(pid_tsne, columns=['x1', 'x2'])
+    df['cluster_rep'] = pid.index
+    
+    # merge with counts
+    merged = df.merge(counts, on='cluster_rep')
+    
+    # plot
+    fig = plt.figure(figsize=(7, 5))
+    x = merged['x1'].values
+    y = merged['x2'].values
+
+    # size of each point by number of samples in cluster
+    sizes = merged['count'].values * scale
+    
+    # color by source
+    uniques = merged['set'].unique()
+    labels = {val: f'C{label}' for val, label in zip(uniques, range(len(uniques)))}
+    colors = [labels[name] for name in merged['set']]
+    
+    plt.scatter(x, y, s=sizes, c=colors)
+    plt.xlabel('TSNE 1', size=13)
+    plt.ylabel('TSNE 2', size=13)
+    plt.xticks([])
+    plt.yticks([])
+    
+    legend_elems = [Line2D([0], [0], marker='o', color='w', label=f'{k}', markerfacecolor=f'{v}') 
+                    for k, v in labels.items()]
+    plt.legend(handles=legend_elems, loc='best', fontsize=13)
